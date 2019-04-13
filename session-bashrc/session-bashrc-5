@@ -1,0 +1,190 @@
+#NS-5000-AGENT
+export HISTTIMEFORMAT="%F %T $(whoami) "
+unset HISTCONTROL
+CLIENT_IP=$(echo $SSH_CONNECTION | awk '{print $1}')
+CLIENT_PORT=$(echo $SSH_CONNECTION | awk '{print $2}')
+
+# pts3
+#FILENAME=`who am i|awk '{print $2}' | awk -F "/" '{print $1$2}'`
+#FILENAME=`tty|awk -F "/" '{print $3$4}'`
+#echo "FILENAME = ${FILENAME}"
+# pts/3
+#TTYNAME=`who am i|awk '{print $2}'`
+#echo "TTYNAME = ${TTYNAME}"
+# pts3
+PTSNAME=`tty|awk -F "/" '{print $3$4}'`
+#echo "PTSNAME = ${PTSNAME}"
+
+RECORDDIR="/tmp/.record"
+LOCALDIR="/tmp/.record/local"
+SSHDIR="/tmp/.record/ssh"
+X11DIR="/tmp/.record/x11"
+
+if [ ! -d $RECORDDIR ];then
+    mkdir -p $RECORDDIR
+    chmod 777 $RECORDDIR
+    chmod a+t $RECORDDIR
+fi
+
+shlvlnum=2
+#get SHLVL value
+shlvlfile="/usr/local/sagent-3000-ns/ShlvlNumber"
+if [ -f $shlvlfile ]; then
+    shlvlnum=`cat $shlvlfile | awk -F "=" '{print $2}'`
+fi
+    
+#DT=`date +"%s_%N"`
+DT=`gettime`
+
+alias scp='scp -S ssh-op'
+alias sftp='sftp -S ssh-op'
+
+X11_SESSION=0
+LOCAL_GDM=0
+LOCAL_TTY=0
+if [ "$CLIENT_IP" = "" -a $SHLVL -eq $shlvlnum -a "$DISPLAY" != "" ]; then
+    fstr=`echo $DISPLAY| cut -d \: -f 1`    
+    if [ "$fstr" != "" ]; then
+        X11_SESSION=1    
+    else 
+        LOCAL_GDM=1
+    fi   
+elif [ "$CLIENT_IP" = "" -a "$DISPLAY" = "" -a $SHLVL -eq 1 -a  "$XAUTHORITY" = "" ];then    
+    LOCAL_TTY=1
+fi
+
+# ssh login    
+if [ "$CLIENT_IP" != "" -a "$PTSNAME" != "" ]; then  
+    #if [ "$PTSNAME" = ""  ]; then
+      #exit
+    #fi      
+      
+    if [ ! -d $SSHDIR ];then        
+        mkdir -p  $SSHDIR
+        chmod 777 $SSHDIR
+        chmod a+t $SSHDIR
+    fi        
+
+    if [ $SHLVL -eq 1 ];then    
+        PTSNAME=`tty|awk -F "/" '{print $3$4}'`
+        LOCAL_IP=$(echo $SSH_CONNECTION | awk '{print $3}')
+        export LOGFILE="$SSHDIR/$CLIENT_IP-$CLIENT_PORT-${LOGNAME}-${DT}-${PTSNAME}-${LOCAL_IP}-cmd.log"
+        touch $LOGFILE
+        chmod 777 $LOGFILE
+        chmod a+t $LOGFILE        
+    fi      
+    
+    if [ $SHLVL -eq 1 ];then
+        PTSNAME=`tty|awk -F "/" '{print $3$4}'`
+        LOCAL_IP=$(echo $SSH_CONNECTION | awk '{print $3}')        
+        export ECHOFILE="$SSHDIR/$CLIENT_IP-$CLIENT_PORT-${LOGNAME}-${DT}-${PTSNAME}-${LOCAL_IP}-echo.log"
+        if [ "$PTSNAME" != "" ]; then
+            script -a -f -q $ECHOFILE
+        fi
+    fi       
+    
+    #when script logout, ssh logout
+    if [ $SHLVL -eq 1 ]; then              
+        exit 
+    fi
+#x11 login
+elif [ $X11_SESSION = 1  ]; then  
+    if [ ! -d $X11DIR ]; then    
+        mkdir -p  $X11DIR
+        chmod 777 $X11DIR
+        chmod a+t $X11DIR        
+    fi           
+
+    if  [ $SHLVL -eq $shlvlnum -a "$DISPLAY" != "" ]; then
+        PTSNAME=`tty|awk -F "/" '{print $3$4}'`
+        SESSION_PID=`echo ${SESSION_MANAGER##*/}`
+        export LOGFILE="$X11DIR/${LOGNAME}-${DT}-${PTSNAME}-${SESSION_PID}-cmd.log"
+        touch $LOGFILE
+        chmod 777 $LOGFILE
+        chmod a+t $LOGFILE        
+    fi          
+    
+    if  [ $SHLVL -eq $shlvlnum -a "$DISPLAY" != "" ]; then
+        PTSNAME=`tty|awk -F "/" '{print $3$4}'`
+        SESSION_PID=`echo ${SESSION_MANAGER##*/}`        
+        export ECHOFILE="$X11DIR/${LOGNAME}-${DT}-${PTSNAME}-${SESSION_PID}-echo.log" 
+        
+        if [ "$PTSNAME" != "" ]; then
+            script -a -f -q $ECHOFILE
+        fi
+    fi       
+    
+    #when script logout, close the window  
+    if  [ $SHLVL -eq $shlvlnum -a "$DISPLAY" != "" ]; then
+        exit 
+    fi
+    
+# local login
+# In SSH and TTY scenarios, Su mode switching is indistinguishable and will go into the branch.
+elif [ $LOCAL_TTY = 1 -o $LOCAL_GDM = 1 ]; then    
+    if [ ! -d $LOCALDIR ]; then    
+        mkdir -p  $LOCALDIR
+        chmod 777 $LOCALDIR
+        chmod a+t $LOCALDIR        
+    fi          
+
+    if  [ $SHLVL -eq 1 -a "$DISPLAY" = "" ] || [ $SHLVL -eq $shlvlnum -a "$DISPLAY" != "" ] ; then
+        if [ "$LOGFILE" = "" ]; then
+            PTSNAME=`tty|awk -F "/" '{print $3$4}'`
+            if [ "$DISPLAY" = "" ]; then
+               LOCALTYPE='text'
+            else 
+               LOCALTYPE='gdm'
+            fi        
+            export LOGFILE="$LOCALDIR/${LOGNAME}-${DT}-${PTSNAME}-${LOCALTYPE}-cmd.log"
+            touch $LOGFILE
+            chmod 777 $LOGFILE
+            chmod a+t $LOGFILE
+        fi    
+    fi      
+    
+    if [ $SHLVL -eq 1 -a "$DISPLAY" = "" ] || [ $SHLVL -eq $shlvlnum -a "$DISPLAY" != ""  ]; then
+        if [ "$ECHOFILE" = "" ]; then
+            PTSNAME=`tty|awk -F "/" '{print $3$4}'`       
+            if [ "$DISPLAY" = "" ]; then
+               LOCALTYPE='text'
+            else 
+               LOCALTYPE='gdm'
+            fi        
+            export ECHOFILE="$LOCALDIR/${LOGNAME}-${DT}-${PTSNAME}-${LOCALTYPE}-echo.log" 
+            
+            if [ "$PTSNAME" != "" ]; then
+                script -a -f -q $ECHOFILE
+            fi 
+        fi    
+    fi       
+    
+    #when script logout, close the window  
+    if [ $SHLVL -eq 1 -a "$DISPLAY" = "" ] || [ $SHLVL -eq $shlvlnum -a "$DISPLAY" != ""  ]; then
+        exit 
+    fi
+  
+fi
+
+operate_cmd()
+{
+    if [ ! $1 ];then
+        return ""
+    fi
+
+    history_num=$(history 1 | awk '{print $1}')
+    history_cmd=$(history 1 | awk "{for(i=5;i<=NF;i++) printf \$i \" \";}")
+    cmd_log_num=$(tail -1 $1 | awk '{print $2}')
+      
+    if [[ $history_num -eq $cmd_log_num ]];then
+        echo $history_num 
+    else
+        echo $history_num $history_cmd
+    fi
+}
+
+if [ "$LOGFILE" != "" ]; then
+    #readonly PROMPT_COMMAND='{ date "+%s_%N###${LOGNAME}###$(pwd)###$(history 1 | awk "{for(i=5;i<=NF;i++) printf \$i \"\";}" )";} >> $LOGFILE' 2>/dev/null
+    #readonly PROMPT_COMMAND='{ date "+%s_%N###${LOGNAME}###$(pwd)### $(operate_cmd $LOGFILE)";} >> $LOGFILE' 2>/dev/null
+    readonly PROMPT_COMMAND=' echo $(gettime)###${LOGNAME}###$(pwd)### $(  FILELOG=${LOGFILE};  history_num=$(history 1 | { read x y; echo $x; } ); history_cmd=$(history 1 | { read a b c d e; echo $e; } ); lastcmd=$(tail -1 ${FILELOG}); cmd_log_num=$( echo ${lastcmd##*###} | { read y z; echo $y; } ); if [[ $history_num = $cmd_log_num ]];then echo  $history_num; else echo $history_num $history_cmd ; fi ) >> $LOGFILE' 2>/dev/null
+fi

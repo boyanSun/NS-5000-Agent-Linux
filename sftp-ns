@@ -1,0 +1,3 @@
+#!/bin/sh
+
+sftp-op -S ssh-op $*

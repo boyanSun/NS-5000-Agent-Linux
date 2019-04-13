@@ -1,0 +1,79 @@
+#!/bin/bash
+
+DT=`date +"%s_%N"`
+
+CLIENT_IP=$(echo $SSH_CONNECTION | awk '{print $1}')
+CLIENT_PORT=$(echo $SSH_CONNECTION | awk '{print $2}')
+
+if [ $# -eq 1 ];then
+    result=$(echo $1 | grep '@')
+    if [[ $result != "" ]];then
+        REMOTE_IP=$(echo $1 | awk -F '@' '{print $2}')
+    else
+        REMOTE_IP=$1
+    fi
+elif [ $# -eq 3 ];then
+    result=$(echo $3 | grep '@')
+    if [[ $result != "" ]];then
+        REMOTE_IP=$(echo $3 | awk -F '@' '{print $2}')
+    else
+        REMOTE_IP=$3
+    fi
+fi		
+
+REMOTE_HOST=$REMOTE_IP
+REMOTE_IP=`ping -c1 $REMOTE_HOST |awk -F'[(|)]' 'NR==1{print $2}'`
+
+X11_SESSION=0
+fstr=`echo $DISPLAY| cut -d \: -f 1`
+if [ "$DISPLAY" != ""   ]; then
+    if [ "$fstr" == "" ]; then
+        LOCAL_SESSION=1
+    else
+        X11_SESSION=1
+    fi
+fi
+
+    
+#SSH
+if [ "$CLIENT_IP" != "" ] ;then
+	PTS_NAME=`tty | awk -F '/' '{print $3}'`
+	PTS_NUM=`tty | awk -F '/' '{print $4}'`
+	SSHDIR="/tmp/.record/ssh"
+	filelist=`ls $SSHDIR`	
+	LOCAL_IP=$(echo $SSH_CONNECTION | awk '{print $3}')
+	PTSNAME=$(echo $SSH_TTY | awk -F '/' '{print $3$4}')
+	LOGFILE="$SSHDIR/$CLIENT_IP-$CLIENT_PORT-${LOGNAME}-${DT}-${PTSNAME}-${LOCAL_IP}-info.log"
+	
+	for file in $filelist
+	do
+		if [[ $file == $CLIENT_IP-$CLIENT_PORT-*-cmd.log ]];then
+			CMD_DT=$(echo $file | awk -F '-' '{print $4}')
+		fi
+	done
+
+	echo "CLIENT_IP=$CLIENT_IP" >>$LOGFILE
+	echo "CLIENT_PORT=$CLIENT_PORT" >>$LOGFILE
+	echo "LOCAL_IP=$LOCAL_IP" >>$LOGFILE
+	echo "CMD_DT=$CMD_DT" >>$LOGFILE
+	echo "REMOTE_IP=$REMOTE_IP" >> $LOGFILE
+    echo "REMOTE_HOST=$REMOTE_HOST" >> $LOGFILE
+	echo "REMOTE_DT=$DT" >>$LOGFILE
+	echo "TTY_NUM=$PTS_NAME/$PTS_NUM" >>$LOGFILE
+
+#x11    
+elif [ "$CLIENT_IP" = "" -a $X11_SESSION == 1 ]; then 
+    PTS_NAME=`tty | awk -F '/' '{print $3}'`
+    PTS_NUM=`tty | awk -F '/' '{print $4}'`
+    SESSION_PID=`echo ${SESSION_MANAGER##*/}`
+    PTSNAME=`tty|awk -F "/" '{print $3$4}'`
+    X11DIR="/tmp/.record/x11"
+    LOGFILE="$X11DIR/${LOGNAME}-${DT}-${PTSNAME}-${SESSION_PID}-info.log"    
+    echo "REMOTE_IP=$REMOTE_IP" >> $LOGFILE
+    echo "REMOTE_HOST=$REMOTE_HOST" >> $LOGFILE
+    echo "REMOTE_DT=$DT" >>$LOGFILE
+    echo "TTY_NUM=$PTS_NAME/$PTS_NUM" >>$LOGFILE
+fi    
+
+
+/usr/bin/ssh-op $*

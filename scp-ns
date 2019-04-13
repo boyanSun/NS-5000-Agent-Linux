@@ -1,0 +1,3 @@
+#!/bin/sh
+
+scp-op -S ssh-op $*
